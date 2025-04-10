@@ -142,43 +142,21 @@
     <script>
         window.onload = function () {
             const { jsPDF } = window.jspdf;
-
             // Constantes SMIC 2025
             const SMIC_HORAIRE_BRUT = 11.88;
-            const SMIC_NET_MENSUEL = 1426.30; // Valeur officielle URSSAF
+            const SMIC_NET_MENSUEL = 1404; // Valeur officielle URSSAF
             const PLF_SS = 3666; // Plafond Sécurité Sociale 2025
             const HEURES_MENSUELLES = 151.67; // 35h/semaine
-
             // Calcul automatique du salaire brut si taux horaire et heures sont renseignés
             document.getElementById('tauxHoraire').addEventListener('change', calculerSalaireBrut);
             document.getElementById('heuresMensuelles').addEventListener('change', calculerSalaireBrut);
             document.getElementById('heuresSupplementaires').addEventListener('change', calculerSalaireBrut);
             document.getElementById('majorationHeuresSup').addEventListener('change', calculerSalaireBrut);
-
-            // Fonction pour calculer les heures mensuelles en fonction du mois
-            function calculerHeuresMensuelles(dateDebut) {
-                const [dayStart, monthStart, yearStart] = dateDebut.split("/").map(Number);
-                const premierJourMois = new Date(yearStart, monthStart - 1, 1); // Premier jour du mois
-                const dernierJourMois = new Date(yearStart, monthStart, 0); // Dernier jour du mois
-                const nbJoursDansLeMois = dernierJourMois.getDate(); // Nombre de jours dans le mois
-                return (nbJoursDansLeMois / 30) * HEURES_MENSUELLES; // Ajustement proportionnel
-            }
-
-            // Écouteur d'événements pour recalculer les heures mensuelles
-            document.getElementById('dateDebut').addEventListener('change', function () {
-                const dateDebut = document.getElementById('dateDebut').value;
-                const heuresMensuelles = calculerHeuresMensuelles(dateDebut);
-                document.getElementById('heuresMensuelles').value = heuresMensuelles.toFixed(2);
-                calculerSalaireBrut();
-            });
-
-            // Calcul du salaire brut
             function calculerSalaireBrut() {
                 const tauxHoraire = parseFloat(document.getElementById('tauxHoraire').value);
                 const heures = parseFloat(document.getElementById('heuresMensuelles').value);
                 const heuresSup = parseFloat(document.getElementById('heuresSupplementaires').value) || 0;
                 const majorationHS = parseFloat(document.getElementById('majorationHeuresSup').value) || 0;
-
                 if (!isNaN(tauxHoraire) && !isNaN(heures) && heures > 0) {
                     const tauxHoraireMajoré = tauxHoraire * (1 + majorationHS / 100);
                     const salaireBrutHSup = heuresSup * tauxHoraireMajoré;
@@ -186,7 +164,6 @@
                     document.getElementById('salaireBrut').value = (salaireBrutBase + salaireBrutHSup).toFixed(2);
                 }
             }
-
             // Validation des champs
             function validateInputs() {
                 const requiredFields = [
@@ -247,7 +224,6 @@
                 }
                 return true;
             }
-
             // Calcul de l'ancienneté
             function calculerAnciennete(dateEntree, dateFin) {
                 const [day, month, year] = dateEntree.split("/").map(Number);
@@ -265,7 +241,6 @@
                     mois: Math.abs(diffMonths + (diffDays < 0 ? -1 : 0))
                 };
             }
-
             // Calcul des jours travaillés
             function calculerJoursTravailles(dateDebut, dateFin) {
                 const [dayStart, monthStart, yearStart] = dateDebut.split("/").map(Number);
@@ -276,17 +251,14 @@
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusif
                 return diffDays;
             }
-
             // Fonction pour calculer les cotisations plafonnées
             function calculerCotisationPlafonnee(base, taux, plafond) {
                 const basePlafonnee = Math.min(base, plafond);
                 return basePlafonnee * taux;
             }
-
             // Fonction principale pour générer le PDF
             window.genererPDF = function () {
                 if (!validateInputs()) return;
-
                 // Récupération des données
                 const nomEntreprise = document.getElementById("nomEntreprise").value;
                 const adresseEntreprise = document.getElementById("adresseEntreprise").value;
@@ -313,17 +285,15 @@
                 const nbEnfants = parseInt(document.getElementById("nbEnfants").value);
                 const tauxImpot = parseFloat(document.getElementById("tauxImpot").value) || 0;
                 const couleurTheme = document.getElementById("couleurTheme").value;
-
                 // Calculs
                 const anciennete = calculerAnciennete(dateEntree, dateFin);
                 const [jourDebut, mois, annee] = dateDebut.split("/").map(Number);
-                const heuresMensuellesAjustees = calculerHeuresMensuelles(dateDebut);
+                const joursDansLeMois = new Date(annee, mois, 0).getDate();
                 const joursTravailles = calculerJoursTravailles(dateDebut, dateFin);
-                const salaireBrutProrata = (salaireBrutMensuel / HEURES_MENSUELLES) * heuresMensuellesAjustees;
+                const salaireBrutProrata = (salaireBrutMensuel / joursDansLeMois) * joursTravailles;
                 const tauxHoraireMajoré = tauxHoraire * (1 + majorationHS / 100);
                 const salaireBrutHSup = heuresSup * tauxHoraireMajoré;
                 const salaireBrutTotal = salaireBrutProrata + salaireBrutHSup;
-
                 // Calcul des cotisations avec les taux officiels SMIC 2025
                 const cotisations = {
                     salariales: {
@@ -349,32 +319,25 @@
                         ags: salaireBrutTotal * 0.0015
                     }
                 };
-
                 const totalSalarial = Object.values(cotisations.salariales).reduce((acc, val) => acc + val, 0);
                 const totalPatronal = Object.values(cotisations.patronales).reduce((acc, val) => acc + val, 0);
-
-                // Calcul du net imposable
+                // Calcul du net à payer selon les règles SMIC
                 const netImposable = salaireBrutTotal - totalSalarial + cotisations.salariales.csgNonDeductible;
                 const impotRevenu = (netImposable * (tauxImpot / 100)) || 0;
-
+                let netAPayer = netImposable - impotRevenu;
                 // Vérification SMIC
                 const isSMIC = Math.abs(tauxHoraire - SMIC_HORAIRE_BRUT) < 0.01 &&
                                Math.abs(heuresMensuelles - HEURES_MENSUELLES) < 0.01 &&
                                heuresSup === 0;
-
-                let netAPayer;
                 if (isSMIC) {
-                    netAPayer = SMIC_NET_MENSUEL; // Forcer le net à payer à 1 426,30 €
-                } else {
-                    netAPayer = netImposable - impotRevenu;
+                    // Forcer les valeurs officielles SMIC
+                    netAPayer = SMIC_NET_MENSUEL;
+                    cotisations.salariales.csgNonDeductible += (SMIC_NET_MENSUEL - netAPayer);
                 }
-
                 // Génération du PDF
                 const doc = new jsPDF();
-
                 // Convertir la couleur hexadécimale en RGB
                 const rgbColor = hexToRgb(couleurTheme);
-
                 // Ajouter un encadrement avec des coins arrondis et une couleur dynamique
                 const marginX = 10; // Marge horizontale
                 const marginY = 10; // Marge verticale
@@ -385,12 +348,10 @@
                 doc.setDrawColor(rgbColor.r, rgbColor.g, rgbColor.b);
                 doc.setLineWidth(lineWidth);
                 doc.roundedRect(marginX, marginY, pageWidth, pageHeight, borderRadius, borderRadius);
-
                 // Ajouter un titre centré en haut du PDF
                 doc.setFontSize(14);
                 doc.setTextColor(0, 0, 0);
                 doc.text("BULLETIN DE SALAIRE", 105, 19, { align: 'center' });
-
                 // Informations entreprise
                 const infosEntreprise = [
                     nomEntreprise,
@@ -412,7 +373,6 @@
                     doc.text(line, 20, yPositionEntreprise, { align: 'left' });
                     yPositionEntreprise += 4;
                 });
-
                 // Informations salarié
                 const infosSalarie = [
                     nomSalarie,
@@ -434,7 +394,6 @@
                     doc.text(line, 120, yPositionSalarie, { align: 'left' });
                     yPositionSalarie += 4;
                 });
-
                 // Période de paie
                 doc.setFont(undefined, 'bold');
                 doc.setFontSize(10);
@@ -444,14 +403,13 @@
                 doc.setTextColor(0, 0, 0);
                 doc.text(`${dateDebut} au ${dateFin}`, 105, yPositionEntreprise + 15, { align: 'center' });
                 doc.setFont(undefined, 'normal');
-
                 // Tableau des cotisations
                 const lignesPaie = [
                     ["SALAIRE BRUT MENSUEL", "", "", salaireBrutMensuel.toFixed(2), "", ""],
                     ["SALAIRE BRUT PRORATA", "", "", salaireBrutProrata.toFixed(2), "", ""],
                     ["HEURES SUPPLÉMENTAIRES", heuresSup.toFixed(2), `${majorationHS}%`, "", salaireBrutHSup.toFixed(2), ""],
                     ["Taux horaire", tauxHoraire.toFixed(2), "", "", "", ""],
-                    ["Heures travaillées", heuresMensuellesAjustees.toFixed(2), "", "", "", ""],
+                    ["Heures travaillées", heuresMensuelles.toFixed(2), "", "", "", ""],
                     ["COTISATIONS SALARIALES", "", "", "", "", ""],
                     ["Maladie - maternité - invalidité - décès", "", "0.75%", cotisations.salariales.maladie.toFixed(2), "", ""],
                     ["Assurance vieillesse plafonnée", "", "6.9%", cotisations.salariales.vieillessePlafonnee.toFixed(2), "", ""],
@@ -479,18 +437,15 @@
                     ["NET IMPOSABLE", "", "", netImposable.toFixed(2), "", ""],
                     ["NET À PAYER EN EUROS", "", "", netAPayer.toFixed(2), "", ""]
                 ];
-
                 // Calcul de la largeur totale du tableau
                 const columnWidths = [60, 15, 15, 25, 25, 30];
                 const totalTableWidth = columnWidths.reduce((a, b) => a + b, 0);
                 const startX = (210 - totalTableWidth) / 2;
                 const tableStartY = yPositionEntreprise + 25;
-
                 // Ajout d'un rectangle pour l'en-tête du tableau centré
                 doc.setDrawColor(rgbColor.r, rgbColor.g, rgbColor.b); // Couleur du thème
                 doc.setFillColor(rgbColor.r, rgbColor.g, rgbColor.b); // Couleur du thème
                 doc.roundedRect(startX, tableStartY, totalTableWidth, 7, 2, 2, "FD");
-
                 // Ajout du tableau des cotisations centré
                 doc.autoTable({
                     startY: tableStartY + 7 - 2,
@@ -524,12 +479,10 @@
                     alternateRowStyles: { fillColor: [rgbColor.r, rgbColor.g, rgbColor.b] }, // Couleur du thème
                     tableWidth: 'fixed'
                 });
-
                 // Sauvegarde du PDF
                 doc.save("bulletin_paie_" + nomSalarie.replace(/\s+/g, '_') + ".pdf");
                 alert("Fiche de paie générée avec succès !");
             };
-
             // Fonction utilitaire pour convertir une couleur hexadécimale en RGB
             function hexToRgb(hex) {
                 const bigint = parseInt(hex.slice(1), 16);
@@ -540,7 +493,7 @@
             }
         };
     </script>
-    <script>
+           <script>
         // Fonction pour désactiver le clic droit
         document.addEventListener('contextmenu', function(event) {
             event.preventDefault(); // Empêche l'action par défaut (menu contextuel)
