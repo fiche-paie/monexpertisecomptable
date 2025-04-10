@@ -147,11 +147,47 @@
             const SMIC_NET_MENSUEL = 1404; // Valeur officielle URSSAF
             const PLF_SS = 3666; // Plafond Sécurité Sociale 2025
             const HEURES_MENSUELLES = 151.67; // 35h/semaine
+            
+            // Fonction pour calculer les heures mensuelles en fonction du mois
+            function calculerHeuresMensuelles(dateDebut) {
+                const [day, month, year] = dateDebut.split("/").map(Number);
+                const date = new Date(year, month - 1, day);
+                const joursDansMois = new Date(year, month, 0).getDate();
+                const joursOuvres = calculerJoursOuvres(year, month - 1);
+                return (joursOuvres / joursDansMois) * HEURES_MENSUELLES;
+            }
+            
+            // Fonction pour calculer les jours ouvrés dans un mois
+            function calculerJoursOuvres(year, month) {
+                let joursOuvres = 0;
+                const joursDansMois = new Date(year, month + 1, 0).getDate();
+                
+                for (let day = 1; day <= joursDansMois; day++) {
+                    const date = new Date(year, month, day);
+                    // Samedi (6) et Dimanche (0) ne sont pas des jours ouvrés
+                    if (date.getDay() !== 0 && date.getDay() !== 6) {
+                        joursOuvres++;
+                    }
+                }
+                return joursOuvres;
+            }
+            
+            // Mettre à jour les heures mensuelles quand la date change
+            document.getElementById('dateDebut').addEventListener('change', function() {
+                const dateDebut = this.value;
+                if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateDebut)) {
+                    const heuresMensuelles = calculerHeuresMensuelles(dateDebut);
+                    document.getElementById('heuresMensuelles').value = heuresMensuelles.toFixed(2);
+                    calculerSalaireBrut();
+                }
+            });
+
             // Calcul automatique du salaire brut si taux horaire et heures sont renseignés
             document.getElementById('tauxHoraire').addEventListener('change', calculerSalaireBrut);
             document.getElementById('heuresMensuelles').addEventListener('change', calculerSalaireBrut);
             document.getElementById('heuresSupplementaires').addEventListener('change', calculerSalaireBrut);
             document.getElementById('majorationHeuresSup').addEventListener('change', calculerSalaireBrut);
+            
             function calculerSalaireBrut() {
                 const tauxHoraire = parseFloat(document.getElementById('tauxHoraire').value);
                 const heures = parseFloat(document.getElementById('heuresMensuelles').value);
@@ -164,6 +200,7 @@
                     document.getElementById('salaireBrut').value = (salaireBrutBase + salaireBrutHSup).toFixed(2);
                 }
             }
+            
             // Validation des champs
             function validateInputs() {
                 const requiredFields = [
@@ -224,6 +261,7 @@
                 }
                 return true;
             }
+            
             // Calcul de l'ancienneté
             function calculerAnciennete(dateEntree, dateFin) {
                 const [day, month, year] = dateEntree.split("/").map(Number);
@@ -241,6 +279,7 @@
                     mois: Math.abs(diffMonths + (diffDays < 0 ? -1 : 0))
                 };
             }
+            
             // Calcul des jours travaillés
             function calculerJoursTravailles(dateDebut, dateFin) {
                 const [dayStart, monthStart, yearStart] = dateDebut.split("/").map(Number);
@@ -251,11 +290,13 @@
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusif
                 return diffDays;
             }
+            
             // Fonction pour calculer les cotisations plafonnées
             function calculerCotisationPlafonnee(base, taux, plafond) {
                 const basePlafonnee = Math.min(base, plafond);
                 return basePlafonnee * taux;
             }
+            
             // Fonction principale pour générer le PDF
             window.genererPDF = function () {
                 if (!validateInputs()) return;
@@ -285,6 +326,7 @@
                 const nbEnfants = parseInt(document.getElementById("nbEnfants").value);
                 const tauxImpot = parseFloat(document.getElementById("tauxImpot").value) || 0;
                 const couleurTheme = document.getElementById("couleurTheme").value;
+                
                 // Calculs
                 const anciennete = calculerAnciennete(dateEntree, dateFin);
                 const [jourDebut, mois, annee] = dateDebut.split("/").map(Number);
@@ -294,6 +336,7 @@
                 const tauxHoraireMajoré = tauxHoraire * (1 + majorationHS / 100);
                 const salaireBrutHSup = heuresSup * tauxHoraireMajoré;
                 const salaireBrutTotal = salaireBrutProrata + salaireBrutHSup;
+                
                 // Calcul des cotisations avec les taux officiels SMIC 2025
                 const cotisations = {
                     salariales: {
@@ -319,12 +362,15 @@
                         ags: salaireBrutTotal * 0.0015
                     }
                 };
+                
                 const totalSalarial = Object.values(cotisations.salariales).reduce((acc, val) => acc + val, 0);
                 const totalPatronal = Object.values(cotisations.patronales).reduce((acc, val) => acc + val, 0);
+                
                 // Calcul du net à payer selon les règles SMIC
                 const netImposable = salaireBrutTotal - totalSalarial + cotisations.salariales.csgNonDeductible;
                 const impotRevenu = (netImposable * (tauxImpot / 100)) || 0;
                 let netAPayer = netImposable - impotRevenu;
+                
                 // Vérification SMIC
                 const isSMIC = Math.abs(tauxHoraire - SMIC_HORAIRE_BRUT) < 0.01 &&
                                Math.abs(heuresMensuelles - HEURES_MENSUELLES) < 0.01 &&
@@ -334,10 +380,13 @@
                     netAPayer = SMIC_NET_MENSUEL;
                     cotisations.salariales.csgNonDeductible += (SMIC_NET_MENSUEL - netAPayer);
                 }
+                
                 // Génération du PDF
                 const doc = new jsPDF();
+                
                 // Convertir la couleur hexadécimale en RGB
                 const rgbColor = hexToRgb(couleurTheme);
+                
                 // Ajouter un encadrement avec des coins arrondis et une couleur dynamique
                 const marginX = 10; // Marge horizontale
                 const marginY = 10; // Marge verticale
@@ -348,10 +397,12 @@
                 doc.setDrawColor(rgbColor.r, rgbColor.g, rgbColor.b);
                 doc.setLineWidth(lineWidth);
                 doc.roundedRect(marginX, marginY, pageWidth, pageHeight, borderRadius, borderRadius);
+                
                 // Ajouter un titre centré en haut du PDF
                 doc.setFontSize(14);
                 doc.setTextColor(0, 0, 0);
                 doc.text("BULLETIN DE SALAIRE", 105, 19, { align: 'center' });
+                
                 // Informations entreprise
                 const infosEntreprise = [
                     nomEntreprise,
@@ -373,6 +424,7 @@
                     doc.text(line, 20, yPositionEntreprise, { align: 'left' });
                     yPositionEntreprise += 4;
                 });
+                
                 // Informations salarié
                 const infosSalarie = [
                     nomSalarie,
@@ -394,6 +446,7 @@
                     doc.text(line, 120, yPositionSalarie, { align: 'left' });
                     yPositionSalarie += 4;
                 });
+                
                 // Période de paie
                 doc.setFont(undefined, 'bold');
                 doc.setFontSize(10);
@@ -403,6 +456,7 @@
                 doc.setTextColor(0, 0, 0);
                 doc.text(`${dateDebut} au ${dateFin}`, 105, yPositionEntreprise + 15, { align: 'center' });
                 doc.setFont(undefined, 'normal');
+                
                 // Tableau des cotisations
                 const lignesPaie = [
                     ["SALAIRE BRUT MENSUEL", "", "", salaireBrutMensuel.toFixed(2), "", ""],
@@ -437,15 +491,18 @@
                     ["NET IMPOSABLE", "", "", netImposable.toFixed(2), "", ""],
                     ["NET À PAYER EN EUROS", "", "", netAPayer.toFixed(2), "", ""]
                 ];
+                
                 // Calcul de la largeur totale du tableau
                 const columnWidths = [60, 15, 15, 25, 25, 30];
                 const totalTableWidth = columnWidths.reduce((a, b) => a + b, 0);
                 const startX = (210 - totalTableWidth) / 2;
                 const tableStartY = yPositionEntreprise + 25;
+                
                 // Ajout d'un rectangle pour l'en-tête du tableau centré
                 doc.setDrawColor(rgbColor.r, rgbColor.g, rgbColor.b); // Couleur du thème
                 doc.setFillColor(rgbColor.r, rgbColor.g, rgbColor.b); // Couleur du thème
                 doc.roundedRect(startX, tableStartY, totalTableWidth, 7, 2, 2, "FD");
+                
                 // Ajout du tableau des cotisations centré
                 doc.autoTable({
                     startY: tableStartY + 7 - 2,
@@ -479,10 +536,12 @@
                     alternateRowStyles: { fillColor: [rgbColor.r, rgbColor.g, rgbColor.b] }, // Couleur du thème
                     tableWidth: 'fixed'
                 });
+                
                 // Sauvegarde du PDF
                 doc.save("bulletin_paie_" + nomSalarie.replace(/\s+/g, '_') + ".pdf");
                 alert("Fiche de paie générée avec succès !");
             };
+            
             // Fonction utilitaire pour convertir une couleur hexadécimale en RGB
             function hexToRgb(hex) {
                 const bigint = parseInt(hex.slice(1), 16);
@@ -493,7 +552,7 @@
             }
         };
     </script>
-           <script>
+    <script>
         // Fonction pour désactiver le clic droit
         document.addEventListener('contextmenu', function(event) {
             event.preventDefault(); // Empêche l'action par défaut (menu contextuel)
